@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>Attendance | Check In / Out</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" id="themeColorMeta" content="#0f1115"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Attendance"/>
+<link rel="apple-touch-icon" href="favicon.svg"/>
+<link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ====== THEME TOKENS ====== */
+[data-theme="dark"]{
+  --bg:#0f1115; --bg2:#171a21; --card:#1e2130; --border:rgba(255,255,255,.07);
+  --text:#e7e9ee; --muted:#8892a4; --accent:#5b8cff; --accent2:#34d399;
+  --danger:#ef4444; --warn:#f59e0b; --shadow:rgba(0,0,0,.45);
+  --input-bg:#0d0f14; --hover:rgba(255,255,255,.04);
+}
+[data-theme="light"]{
+  --bg:#f0f4ff; --bg2:#ffffff; --card:#ffffff; --border:rgba(0,0,0,.08);
+  --text:#0f172a; --muted:#64748b; --accent:#4f78f5; --accent2:#10b981;
+  --danger:#ef4444; --warn:#d97706; --shadow:rgba(100,116,139,.15);
+  --input-bg:#f8fafc; --hover:rgba(0,0,0,.03);
+}
+
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+html,body{margin:0; min-height:100vh; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; transition:background .25s,color .25s;}
+
+body{display:flex; align-items:center; justify-content:center; padding:16px;
+  background:var(--bg);}
+
+.card{
+  background:var(--card); border-radius:22px; padding:28px 24px;
+  width:100%; max-width:400px; box-shadow:0 24px 64px var(--shadow);
+  border:1px solid var(--border); position:relative;
+}
+
+/* ---- theme toggle ---- */
+.theme-btn{
+  position:absolute; top:18px; right:18px;
+  background:var(--hover); border:1px solid var(--border); color:var(--muted);
+  border-radius:50%; width:36px; height:36px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; font-size:18px;
+  transition:all .2s;
+}
+.theme-btn:hover{background:var(--accent); color:#fff; border-color:var(--accent);}
+
+.logo{font-size:44px; text-align:center; margin-bottom:4px; line-height:1;}
+h1{font-size:21px; margin:0 0 2px; font-weight:800; text-align:center;}
+.sub{color:var(--muted); font-size:13px; margin-bottom:22px; text-align:center;}
+
+label{display:block; font-size:12px; font-weight:600; color:var(--muted); margin:14px 0 5px; text-transform:uppercase; letter-spacing:.5px;}
+select,input{
+  width:100%; padding:13px 14px; border-radius:12px; border:1.5px solid var(--border);
+  background:var(--input-bg); color:var(--text); font-size:15px; outline:none; transition:border .15s;
+}
+select:focus,input:focus{border-color:var(--accent);}
+
+/* PIN dots style */
+input[type=password]{letter-spacing:6px; font-size:20px; text-align:center;}
+
+button.btn{
+  width:100%; padding:14px; border:none; border-radius:13px; font-size:15px; font-weight:700;
+  cursor:pointer; margin-top:14px; transition:all .15s; letter-spacing:.2px;
+}
+button.btn:active{transform:scale(.98);}
+.btn-primary{background:var(--accent); color:#fff; box-shadow:0 4px 18px rgba(91,140,255,.35);}
+.btn-primary:hover{filter:brightness(1.1);}
+.btn-success{background:var(--accent2); color:#064e3b; box-shadow:0 4px 18px rgba(52,211,153,.3);}
+.btn-ghost{background:transparent; border:1.5px solid var(--border); color:var(--muted);}
+.btn-ghost:hover{border-color:var(--accent); color:var(--accent);}
+
+.status{font-size:13px; padding:12px 14px; border-radius:12px; margin-top:14px; display:none; font-weight:500;}
+.status.show{display:block;}
+.status.err{background:rgba(239,68,68,.1); color:#f87171; border:1px solid rgba(239,68,68,.2);}
+.status.ok{background:rgba(52,211,153,.1); color:#34d399; border:1px solid rgba(52,211,153,.2);}
+.status.info{background:rgba(91,140,255,.1); color:#818cf8; border:1px solid rgba(91,140,255,.2);}
+
+.hidden{display:none!important;}
+video,img.preview{width:100%; border-radius:14px; margin-top:14px; background:#000; display:block;}
+
+.spinner{width:16px; height:16px; border:2.5px solid rgba(255,255,255,.3); border-top-color:#fff;
+  border-radius:50%; display:inline-block; animation:spin .7s linear infinite; vertical-align:-3px; margin-right:6px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+.info-box{
+  background:var(--input-bg); border:1px solid var(--border);
+  border-radius:13px; padding:14px 16px; margin-top:14px; font-size:13px; color:var(--muted);
+  line-height:1.7;
+}
+.info-box b{color:var(--text);}
+
+/* Progress steps */
+.steps{display:flex; gap:4px; margin-bottom:20px;}
+.step{flex:1; height:3px; border-radius:2px; background:var(--border);}
+.step.done{background:var(--accent);}
+
+/* Camera button group */
+.cam-row{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px;}
+.cam-row .btn{margin-top:0;}
+
+/* Badge */
+.badge{display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;}
+.badge.green{background:rgba(52,211,153,.15); color:#34d399;}
+.badge.red{background:rgba(239,68,68,.15); color:#f87171;}
+.badge.yellow{background:rgba(245,158,11,.15); color:#f59e0b;}
+
+/* Install prompt */
+.install-bar{
+  background:linear-gradient(135deg,var(--accent),#818cf8);
+  border-radius:12px; padding:12px 14px; margin-bottom:16px;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.install-bar span{font-size:13px; color:#fff; font-weight:500;}
+.install-bar button{background:rgba(255,255,255,.2); border:none; color:#fff; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;}
+</style>
+</head>
+<body>
+
+<div class="card" id="app">
+  <button class="theme-btn" id="themeToggle" title="Toggle theme">🌙</button>
+
+  <!-- LOGIN -->
+  <div id="step-login">
+    <div class="steps"><div class="step done" id="s1"></div><div class="step" id="s2"></div><div class="step" id="s3"></div></div>
+    <div class="logo">🌅</div>
+    <h1>Good Morning</h1>
+    <div class="sub">Select your name and enter your PIN</div>
+
+    <label>Your Name</label>
+    <select id="employeeSelect"><option>Loading...</option></select>
+
+    <label>PIN</label>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="• • • •"/>
+
+    <button class="btn btn-primary" id="loginBtn">Continue →</button>
+    <div class="status" id="loginStatus"></div>
+  </div>
+
+  <!-- PENDING -->
+  <div id="step-pending" class="hidden">
+    <div class="logo">⏳</div>
+    <h1>Waiting for Approval</h1>
+    <div class="sub">New device detected. Admin must approve before you can proceed.</div>
+    <div class="info-box">Your request has been sent to the admin. Please ask them to check the <b>Device Requests</b> section in the Admin Panel, then tap Refresh.</div>
+    <button class="btn btn-primary" id="refreshPendingBtn">🔄 Refresh Status</button>
+    <button class="btn btn-ghost" id="backBtn1">← Back</button>
+  </div>
+
+  <!-- ACTION -->
+  <div id="step-action" class="hidden">
+    <div class="steps"><div class="step done"></div><div class="step done"></div><div class="step" id="s3b"></div></div>
+    <div class="logo" id="actionIcon">✅</div>
+    <h1 id="welcomeText">Welcome</h1>
+    <div class="sub" id="actionSub">Ready to mark attendance</div>
+    <div class="info-box" id="todayInfo"></div>
+
+    <video id="cam" autoplay playsinline class="hidden"></video>
+    <canvas id="canvas" class="hidden"></canvas>
+    <img id="preview" class="preview hidden"/>
+
+    <button class="btn btn-primary" id="startCamBtn">📷 Open Camera</button>
+    <div class="cam-row hidden" id="captureRow">
+      <button class="btn btn-success" id="capturePhotoBtn">📸 Capture</button>
+      <button class="btn btn-ghost" id="closeCamBtn">✕ Cancel</button>
+    </div>
+    <div class="cam-row hidden" id="confirmRow">
+      <button class="btn btn-success" id="confirmBtn">✅ Submit</button>
+      <button class="btn btn-ghost" id="retakeBtn">🔄 Retake</button>
+    </div>
+
+    <div class="status" id="actionStatus"></div>
+    <button class="btn btn-ghost" id="logoutBtn" style="margin-top:18px;">↩ Switch User</button>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+// ====== THEME ======
+const root = document.documentElement;
+const stored = localStorage.getItem("att_theme") || "dark";
+root.setAttribute("data-theme", stored);
+const themeBtn = document.getElementById("themeToggle");
+themeBtn.textContent = stored === "dark" ? "☀️" : "🌙";
+themeBtn.onclick = () => {
+  const cur = root.getAttribute("data-theme");
+  const next = cur === "dark" ? "light" : "dark";
+  root.setAttribute("data-theme", next);
+  localStorage.setItem("att_theme", next);
+  themeBtn.textContent = next === "dark" ? "☀️" : "🌙";
+  document.getElementById("themeColorMeta").content = next === "dark" ? "#0f1115" : "#f0f4ff";
+};
+
+// ====== PWA SERVICE WORKER ======
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
+
+// ====== PWA INSTALL PROMPT ======
+let deferredPrompt;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault(); deferredPrompt = e;
+  const bar = document.createElement("div");
+  bar.className = "install-bar";
+  bar.innerHTML = `<span>📲 Add to Home Screen for best experience</span><button id="installBtn">Install</button>`;
+  document.querySelector(".card").prepend(bar);
+  document.getElementById("installBtn").onclick = async () => {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === "accepted") bar.remove();
+  };
+});
+
+// ====== APP LOGIC ======
+let currentEmployee = null, currentBranch = null, capturedBlob = null, stream = null, mode = null;
+const $ = id => document.getElementById(id);
+const showStep = id => {
+  ["step-login","step-pending","step-action"].forEach(s => $(s).classList.add("hidden"));
+  $(id).classList.remove("hidden");
+};
+const setStatus = (el, type, msg) => { el.className = "status show " + type; el.innerHTML = msg; };
+const clearStatus = el => { el.className = "status"; el.textContent = ""; };
+
+async function loadEmployees() {
+  const { data } = await supabaseClient.from("employees").select("id,name").eq("status","active").order("name");
+  const sel = $("employeeSelect");
+  if (!data || !data.length) { sel.innerHTML = `<option value="">No employees found</option>`; return; }
+  sel.innerHTML = data.map(e => `<option value="${e.id}">${e.name}</option>`).join("");
+}
+loadEmployees();
+
+$("loginBtn").onclick = async () => {
+  const empId = $("employeeSelect").value;
+  const pin = $("pinInput").value.trim();
+  const statusEl = $("loginStatus");
+  clearStatus(statusEl);
+  if (!empId || !pin) { setStatus(statusEl,"err","Please select your name and enter your PIN."); return; }
+  $("loginBtn").disabled = true;
+  $("loginBtn").innerHTML = `<span class="spinner"></span>Verifying...`;
+  const { data: emp, error } = await supabaseClient.from("employees").select("*,branches(*)").eq("id",empId).single();
+  $("loginBtn").disabled = false; $("loginBtn").innerHTML = "Continue →";
+  if (error || !emp) { setStatus(statusEl,"err","Employee not found."); return; }
+  if (emp.pin !== pin) { setStatus(statusEl,"err","❌ Incorrect PIN. Please try again."); return; }
+
+  const myDeviceId = getDeviceId();
+  if (!emp.device_id) {
+    await supabaseClient.from("employees").update({ device_id: myDeviceId }).eq("id", emp.id);
+    emp.device_id = myDeviceId;
+  }
+  if (emp.device_id !== myDeviceId) {
+    const { data: req } = await supabaseClient.from("device_change_requests")
+      .select("*").eq("employee_id",emp.id).eq("new_device_id",myDeviceId)
+      .order("requested_at",{ascending:false}).limit(1).maybeSingle();
+    if (req?.status === "approved") {
+      await supabaseClient.from("employees").update({ device_id: myDeviceId }).eq("id", emp.id);
+      emp.device_id = myDeviceId;
+    } else if (req?.status === "pending") {
+      currentEmployee = emp; showStep("step-pending"); return;
+    } else {
+      await supabaseClient.from("device_change_requests").insert({
+        employee_id: emp.id, old_device_id: emp.device_id, new_device_id: myDeviceId, status: "pending"
+      });
+      currentEmployee = emp; showStep("step-pending"); return;
+    }
+  }
+  currentEmployee = emp; currentBranch = emp.branches;
+  await proceedToAction();
+};
+
+$("backBtn1").onclick = () => showStep("step-login");
+$("refreshPendingBtn").onclick = () => $("loginBtn").click();
+
+async function proceedToAction() {
+  showStep("step-action");
+  $("s3b").classList.add("done");
+  $("welcomeText").textContent = "Hi, " + currentEmployee.name.split(" ")[0] + "!";
+  const today = new Date().toISOString().slice(0,10);
+  const { data: rec } = await supabaseClient.from("attendance").select("*").eq("employee_id",currentEmployee.id).eq("date",today).maybeSingle();
+
+  if (!rec?.check_in_time) {
+    mode="in"; $("actionIcon").textContent="🌅"; $("actionSub").textContent="Mark your Check-In for today";
+    $("todayInfo").innerHTML=`<b>📍 Branch:</b> ${currentBranch?.name||"N/A"}<br><b>📅 Date:</b> ${new Date().toLocaleDateString("en-IN",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}<br><b>⏰ Time:</b> ${new Date().toLocaleTimeString()}`;
+    $("startCamBtn").classList.remove("hidden");
+  } else if (!rec?.check_out_time) {
+    mode="out"; $("actionIcon").textContent="🌇"; $("actionSub").textContent="Mark your Check-Out for today";
+    const inTime = new Date(rec.check_in_time);
+    $("todayInfo").innerHTML=`<b>✅ Checked in at:</b> ${inTime.toLocaleTimeString()}<br><b>📍 Branch:</b> ${currentBranch?.name||"N/A"}<br><b>Status:</b> <span class="badge ${rec.late_status==="late"?"yellow":"green"}">${rec.late_status==="late"?"⚠ Late":"✓ On Time"}</span>`;
+    $("startCamBtn").classList.remove("hidden");
+  } else {
+    mode="done"; $("actionIcon").textContent="🎉"; $("actionSub").textContent="All done for today!";
+    const inT = new Date(rec.check_in_time), outT = new Date(rec.check_out_time);
+    const dur = Math.round((outT-inT)/60000);
+    $("todayInfo").innerHTML=`<b>🌅 Check-In:</b> ${inT.toLocaleTimeString()}<br><b>🌇 Check-Out:</b> ${outT.toLocaleTimeString()}<br><b>⏱ Duration:</b> ${Math.floor(dur/60)}h ${dur%60}m<br><b>Status:</b> <span class="badge ${rec.late_status==="late"?"yellow":"green"}">${rec.late_status==="late"?"⚠ Late":"✓ On Time"}</span>`;
+    $("startCamBtn").classList.add("hidden");
+  }
+}
+
+$("startCamBtn").onclick = async () => {
+  clearStatus($("actionStatus"));
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode:"user", width:{ideal:640} } });
+    $("cam").srcObject = stream; $("cam").classList.remove("hidden");
+    $("startCamBtn").classList.add("hidden"); $("captureRow").classList.remove("hidden");
+  } catch(e) { setStatus($("actionStatus"),"err","Camera error: "+e.message); }
+};
+
+$("closeCamBtn").onclick = () => {
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  $("cam").classList.add("hidden"); $("captureRow").classList.add("hidden"); $("startCamBtn").classList.remove("hidden");
+};
+
+$("capturePhotoBtn").onclick = () => {
+  const v=$("cam"), c=$("canvas");
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext("2d").drawImage(v,0,0);
+  c.toBlob(blob=>{
+    capturedBlob=blob;
+    $("preview").src=URL.createObjectURL(blob); $("preview").classList.remove("hidden");
+    $("cam").classList.add("hidden");
+    stream.getTracks().forEach(t=>t.stop());
+    $("captureRow").classList.add("hidden"); $("confirmRow").classList.remove("hidden");
+  },"image/jpeg",0.85);
+};
+
+$("retakeBtn").onclick = () => {
+  $("preview").classList.add("hidden"); $("confirmRow").classList.add("hidden");
+  $("startCamBtn").classList.remove("hidden"); capturedBlob=null;
+};
+
+$("confirmBtn").onclick = async () => {
+  const statusEl = $("actionStatus"); clearStatus(statusEl);
+  $("confirmBtn").disabled=true; $("confirmBtn").innerHTML=`<span class="spinner"></span>Getting location...`;
+  try {
+    if(!currentBranch) throw new Error("No branch assigned. Contact admin.");
+    const loc = await getLocation();
+    const dist = distanceMeters(loc.lat, loc.lng, currentBranch.latitude, currentBranch.longitude);
+    if(dist > currentBranch.radius_meters) throw new Error(`📍 You are ${Math.round(dist)}m away from ${currentBranch.name}. Must be within ${currentBranch.radius_meters}m to mark attendance.`);
+    $("confirmBtn").innerHTML=`<span class="spinner"></span>Uploading photo...`;
+    const compressed = await compressImage(capturedBlob);
+    const path = `${currentEmployee.id}/${new Date().toISOString().slice(0,10)}_${mode}_${Date.now()}.jpg`;
+    const photoUrl = await uploadPhoto(compressed, path);
+    $("confirmBtn").innerHTML=`<span class="spinner"></span>Saving...`;
+    const today = new Date().toISOString().slice(0,10);
+    if(mode==="in") {
+      const {data:settings} = await supabaseClient.from("settings").select("*").eq("id",1).single();
+      const now = new Date();
+      const [h,m] = (settings?.shift_start_time||"09:30:00").split(":").map(Number);
+      const cutoff = new Date(now); cutoff.setHours(h,m,0,0); cutoff.setMinutes(cutoff.getMinutes()+(settings?.late_grace_minutes||0));
+      const lateStatus = now > cutoff ? "late" : "on_time";
+      const {error} = await supabaseClient.from("attendance").upsert({
+        employee_id:currentEmployee.id, branch_id:currentBranch.id, date:today,
+        check_in_time:now.toISOString(), check_in_lat:loc.lat, check_in_lng:loc.lng,
+        check_in_photo_url:photoUrl, late_status:lateStatus
+      },{onConflict:"employee_id,date"});
+      if(error) throw error;
+      setStatus(statusEl,"ok",`🌅 Checked in at ${now.toLocaleTimeString()} — ${lateStatus==="late"?"⚠ Marked Late":"✅ On Time"}!`);
+    } else {
+      const {error} = await supabaseClient.from("attendance").update({
+        check_out_time:new Date().toISOString(), check_out_lat:loc.lat, check_out_lng:loc.lng, check_out_photo_url:photoUrl
+      }).eq("employee_id",currentEmployee.id).eq("date",today);
+      if(error) throw error;
+      setStatus(statusEl,"ok","🌇 Checked out successfully! See you tomorrow. 👋");
+    }
+    $("s3b").classList.add("done");
+    $("preview").classList.add("hidden"); $("confirmRow").classList.add("hidden");
+    setTimeout(()=>proceedToAction(),2000);
+  } catch(e) {
+    setStatus(statusEl,"err",e.message);
+    $("retakeBtn").click();
+  } finally { $("confirmBtn").disabled=false; $("confirmBtn").innerHTML="✅ Submit"; }
+};
+
+$("logoutBtn").onclick = () => {
+  currentEmployee=null; currentBranch=null; capturedBlob=null;
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  $("cam").classList.add("hidden"); $("preview").classList.add("hidden");
+  $("startCamBtn").classList.remove("hidden"); $("captureRow").classList.add("hidden"); $("confirmRow").classList.add("hidden");
+  $("pinInput").value=""; clearStatus($("actionStatus")); showStep("step-login");
+};
+</script>
+</body>
+</html>

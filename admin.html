@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Attendance Admin Panel</title>
+<link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+<link rel="manifest" href="manifest.json"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+[data-theme="dark"]{
+  --bg:#0b0d14; --bg2:#0f1115; --card:#16192a; --card2:#1c2035;
+  --border:rgba(255,255,255,.07); --text:#e7e9ee; --muted:#7b849a;
+  --accent:#5b8cff; --accent2:#34d399; --danger:#ef4444; --warn:#f59e0b;
+  --shadow:rgba(0,0,0,.5); --input-bg:#0d0f1a; --hover:rgba(255,255,255,.04);
+  --table-row:rgba(255,255,255,.015); --topbar:#111427;
+}
+[data-theme="light"]{
+  --bg:#eef2ff; --bg2:#f8faff; --card:#ffffff; --card2:#f1f5fd;
+  --border:rgba(79,120,245,.12); --text:#0f172a; --muted:#64748b;
+  --accent:#4f78f5; --accent2:#10b981; --danger:#ef4444; --warn:#d97706;
+  --shadow:rgba(79,120,245,.12); --input-bg:#f8fafc; --hover:rgba(79,120,245,.04);
+  --table-row:rgba(79,120,245,.02); --topbar:#ffffff;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+body{margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg); color:var(--text); min-height:100vh;}
+
+/* TOPBAR */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 24px; height:60px; background:var(--topbar);
+  border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100;
+  box-shadow:0 2px 20px var(--shadow);
+}
+.topbar-left{display:flex; align-items:center; gap:12px;}
+.topbar-left .logo{font-size:26px;}
+.topbar-left h1{font-size:16px; font-weight:800; margin:0; letter-spacing:-.3px;}
+.topbar-left span{font-size:11px; color:var(--muted); display:block; margin-top:1px;}
+.topbar-right{display:flex; align-items:center; gap:10px;}
+.theme-btn,.logout-btn{
+  border:1px solid var(--border); background:var(--hover); color:var(--muted);
+  padding:7px 13px; border-radius:8px; cursor:pointer; font-size:12px; font-weight:600;
+  transition:all .15s;
+}
+.theme-btn:hover,.logout-btn:hover{border-color:var(--accent); color:var(--accent);}
+.theme-btn{padding:7px 10px; font-size:16px;}
+
+/* NAV */
+.nav-wrap{background:var(--topbar); border-bottom:1px solid var(--border); overflow-x:auto; padding:0 16px;}
+.nav{display:flex; gap:2px; min-width:max-content;}
+.navbtn{
+  background:transparent; border:none; color:var(--muted); padding:14px 18px;
+  cursor:pointer; font-size:13px; font-weight:600; position:relative; white-space:nowrap;
+  transition:color .15s;
+}
+.navbtn.active{color:var(--accent);}
+.navbtn.active::after{content:""; position:absolute; bottom:0; left:0; right:0; height:2.5px; background:var(--accent); border-radius:2px 2px 0 0;}
+.navbtn:hover:not(.active){color:var(--text);}
+
+/* MAIN */
+main{padding:20px 24px; max-width:1200px; margin:0 auto;}
+.panel{display:none;}
+.panel.active{display:block;}
+
+/* CARDS */
+.card{background:var(--card); border-radius:16px; padding:20px; margin-bottom:16px; border:1px solid var(--border); box-shadow:0 2px 20px var(--shadow);}
+.card-header{display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; flex-wrap:wrap; gap:10px;}
+.card-title{font-size:15px; font-weight:700; margin:0; display:flex; align-items:center; gap:8px;}
+
+/* STATS GRID */
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:20px;}
+.stat{
+  background:var(--card); border-radius:14px; padding:18px 16px;
+  border:1px solid var(--border); position:relative; overflow:hidden;
+}
+.stat::before{content:""; position:absolute; top:0; left:0; right:0; height:3px;}
+.stat.blue::before{background:linear-gradient(90deg,#5b8cff,#818cf8);}
+.stat.green::before{background:linear-gradient(90deg,#34d399,#059669);}
+.stat.yellow::before{background:linear-gradient(90deg,#f59e0b,#d97706);}
+.stat.red::before{background:linear-gradient(90deg,#ef4444,#dc2626);}
+.stat .num{font-size:30px; font-weight:800; line-height:1;}
+.stat .lbl{font-size:11px; color:var(--muted); margin-top:5px; font-weight:600; text-transform:uppercase; letter-spacing:.5px;}
+.stat .icon{font-size:22px; position:absolute; top:16px; right:16px; opacity:.4;}
+
+/* TABLE */
+.table-wrap{overflow-x:auto; border-radius:10px;}
+table{width:100%; border-collapse:collapse; font-size:13px;}
+thead th{
+  text-align:left; padding:10px 12px; color:var(--muted); font-weight:700;
+  font-size:11px; text-transform:uppercase; letter-spacing:.5px;
+  border-bottom:1px solid var(--border); white-space:nowrap;
+}
+tbody td{padding:11px 12px; border-bottom:1px solid var(--border); vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--hover);}
+tbody tr{background:var(--table-row);}
+
+/* INPUTS */
+input,select{
+  padding:9px 12px; border-radius:9px; border:1.5px solid var(--border);
+  background:var(--input-bg); color:var(--text); font-size:13px; outline:none; transition:border .15s;
+}
+input:focus,select:focus{border-color:var(--accent);}
+label.field{display:flex; flex-direction:column; gap:4px; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
+label.field input, label.field select{margin-top:2px;}
+
+/* BUTTONS */
+.btn{display:inline-flex; align-items:center; gap:6px; padding:9px 15px; border:none; border-radius:9px; cursor:pointer; font-size:13px; font-weight:600; transition:all .15s; white-space:nowrap;}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--accent); color:#fff;}
+.btn-primary:hover{filter:brightness(1.1);}
+.btn-green{background:var(--accent2); color:#064e3b;}
+.btn-red{background:var(--danger); color:#fff;}
+.btn-ghost{background:var(--hover); border:1px solid var(--border); color:var(--muted);}
+.btn-ghost:hover{border-color:var(--accent); color:var(--accent);}
+.btn-sm{padding:5px 10px; font-size:12px; border-radius:7px;}
+
+/* PILL / BADGE */
+.pill{display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700;}
+.pill.green{background:rgba(52,211,153,.15); color:#34d399;}
+.pill.red{background:rgba(239,68,68,.15); color:#f87171;}
+.pill.yellow{background:rgba(245,158,11,.15); color:#f59e0b;}
+.pill.blue{background:rgba(91,140,255,.15); color:#818cf8;}
+
+/* FORM ROWS */
+.form-row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:12px;}
+
+/* AVATAR PHOTO THUMB */
+img.thumb{width:34px; height:34px; border-radius:7px; object-fit:cover; cursor:pointer; border:1px solid var(--border);}
+
+/* MISC */
+.muted{color:var(--muted);}
+.empty-row td{text-align:center; padding:24px; color:var(--muted);}
+.hidden{display:none!important;}
+.spinner{width:14px; height:14px; border:2px solid rgba(255,255,255,.3); border-top-color:#fff; border-radius:50%; display:inline-block; animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* LOGIN GATE */
+#loginGate{display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px; background:var(--bg);}
+#loginGate .card{width:100%; max-width:360px; text-align:center;}
+#loginGate .logo{font-size:52px; margin-bottom:8px;}
+#loginGate h2{font-size:20px; font-weight:800; margin:0 0 6px;}
+#loginGate .sub{color:var(--muted); font-size:13px; margin-bottom:20px;}
+#loginGate input{width:100%; text-align:center; font-size:20px; letter-spacing:8px; margin-bottom:10px;}
+#loginGate .btn-primary{width:100%; justify-content:center; padding:13px; font-size:15px;}
+#loginErr{color:#f87171; font-size:12px; margin-top:8px; min-height:18px;}
+
+/* REPORT SPECIFIC */
+.report-header{
+  background:linear-gradient(135deg,var(--accent),#818cf8);
+  border-radius:14px; padding:20px 22px; margin-bottom:16px; color:#fff;
+}
+.report-header h2{margin:0 0 4px; font-size:18px;}
+.report-header p{margin:0; opacity:.8; font-size:13px;}
+.day-section{margin-bottom:8px;}
+.day-label{
+  font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;
+  letter-spacing:.6px; padding:8px 12px; background:var(--card2); border-radius:8px;
+  margin-bottom:4px;
+}
+.duration-chip{
+  background:rgba(91,140,255,.1); color:var(--accent); padding:2px 8px;
+  border-radius:6px; font-size:11px; font-weight:700;
+}
+.report-summary-card{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-top:16px;
+}
+.rscard{background:var(--card2); border-radius:10px; padding:12px; text-align:center; border:1px solid var(--border);}
+.rscard .n{font-size:22px; font-weight:800;}
+.rscard .l{font-size:11px; color:var(--muted); margin-top:2px;}
+.tab-row{display:flex; gap:6px; margin-bottom:14px;}
+.tab{padding:8px 16px; border-radius:8px; cursor:pointer; font-size:13px; font-weight:600; border:1.5px solid var(--border); background:transparent; color:var(--muted);}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+</style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div id="loginGate">
+  <div class="card">
+    <div class="logo">🌅</div>
+    <h2>Admin Panel</h2>
+    <div class="sub">Enter your admin PIN to continue</div>
+    <input type="password" id="adminPinInput" placeholder="••••••" inputmode="numeric" maxlength="8"/>
+    <button class="btn btn-primary" id="adminLoginBtn" style="width:100%;justify-content:center;padding:12px;">Login →</button>
+    <div id="adminLoginErr"></div>
+    <a href="index.html" style="display:block;margin-top:16px;color:var(--muted);font-size:12px;">← Employee Check-in</a>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="adminApp" class="hidden">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">🌅</div>
+      <div>
+        <h1>Attendance Admin</h1>
+        <span id="todayDateLabel"></span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <button class="theme-btn" id="themeToggle">☀️</button>
+      <button class="logout-btn" onclick="location.reload()">Logout</button>
+    </div>
+  </div>
+  <div class="nav-wrap">
+    <div class="nav">
+      <button class="navbtn active" data-panel="dashboard">📊 Today</button>
+      <button class="navbtn" data-panel="branches">🏢 Branches</button>
+      <button class="navbtn" data-panel="employees">👥 Employees</button>
+      <button class="navbtn" data-panel="devices">📱 Device Requests <span id="pendingBadge" class="hidden" style="background:#ef4444;color:#fff;border-radius:9px;padding:1px 6px;font-size:11px;margin-left:4px;"></span></button>
+      <button class="navbtn" data-panel="reports">📋 Reports</button>
+      <button class="navbtn" data-panel="settings">⚙️ Settings</button>
+    </div>
+  </div>
+  <main>
+    <!-- TODAY -->
+    <div class="panel active" id="panel-dashboard">
+      <div class="stats" id="todayStats"></div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📋 Today's Attendance</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="dashBranchFilter" style="font-size:12px;padding:6px 10px;"><option value="">All Branches</option></select>
+            <button class="btn btn-ghost btn-sm" onclick="loadToday()">🔄 Refresh</button>
+            <button class="btn btn-green btn-sm" id="exportTodayBtn">⬇ Export</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Employee</th><th>Branch</th><th>Check-In</th><th>Check-Out</th><th>Duration</th><th>Status</th><th>Location</th><th>Photos</th></tr></thead>
+            <tbody id="todayTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- BRANCHES -->
+    <div class="panel" id="panel-branches">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px;">➕ Add New Branch</div>
+        <div class="form-row">
+          <label class="field">Branch Name<input id="branchName" placeholder="e.g. Head Office"/></label>
+          <label class="field">Latitude<input id="branchLat" type="number" step="any" placeholder="12.9716"/></label>
+          <label class="field">Longitude<input id="branchLng" type="number" step="any" placeholder="77.5946"/></label>
+          <label class="field">Radius (meters)<input id="branchRadius" type="number" value="150" style="width:120px;"/></label>
+          <button class="btn btn-primary" id="addBranchBtn">Add Branch</button>
+          <button class="btn btn-ghost" id="useMyLocBtn">📍 My Location</button>
+        </div>
+        <p class="muted" style="font-size:12px;margin:4px 0 0;">💡 Tip: Open Google Maps → right-click on your office → copy the lat,lng shown at the top. Or click "My Location" while standing at the branch.</p>
+      </div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px;">🏢 All Branches</div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Branch Name</th><th>Latitude</th><th>Longitude</th><th>Radius (m)</th><th>Employees</th><th></th></tr></thead>
+          <tbody id="branchTableBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- EMPLOYEES -->
+    <div class="panel" id="panel-employees">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px;">➕ Add New Employee</div>
+        <div class="form-row">
+          <label class="field">Full Name<input id="empName" placeholder="Employee name"/></label>
+          <label class="field">PIN (4-6 digits)<input id="empPin" maxlength="6" placeholder="e.g. 1234"/></label>
+          <label class="field">Assign Branch<select id="empBranch"></select></label>
+          <button class="btn btn-primary" id="addEmpBtn">Add Employee</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">👥 All Employees</div>
+          <div style="display:flex;gap:8px;">
+            <input id="empSearch" placeholder="Search by name..." style="font-size:12px;padding:6px 10px;width:180px;"/>
+            <select id="empBranchFilter" style="font-size:12px;padding:6px 10px;"><option value="">All Branches</option></select>
+          </div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>Name</th><th>PIN</th><th>Branch</th><th>Status</th><th>Device</th><th>Actions</th></tr></thead>
+          <tbody id="empTableBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- DEVICE REQUESTS -->
+    <div class="panel" id="panel-devices">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px;">📱 Pending Device Change Requests</div>
+        <p class="muted" style="font-size:13px;margin:0 0 14px;">When an employee logs in from a new phone, it appears here. Approve to let them use the new device, or Reject to keep their existing device bound.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Employee</th><th>Branch</th><th>Requested At</th><th>Actions</th></tr></thead>
+          <tbody id="deviceTableBody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- REPORTS -->
+    <div class="panel" id="panel-reports">
+      <div class="tab-row">
+        <button class="tab active" data-tab="monthly" id="tab-monthly">📅 Monthly Summary</button>
+        <button class="tab" data-tab="daily" id="tab-daily">📋 Daily Detailed</button>
+        <button class="tab" data-tab="employee" id="tab-employee">👤 Per Employee</button>
+      </div>
+
+      <!-- MONTHLY SUMMARY -->
+      <div id="report-monthly">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📅 Monthly Attendance Summary</div>
+          </div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="field">Month<input id="reportMonth" type="month"/></label>
+            <label class="field">Branch<select id="reportBranch"><option value="">All Branches</option></select></label>
+            <button class="btn btn-primary" id="genReportBtn">Generate Report</button>
+            <button class="btn btn-green" id="exportMonthlyBtn">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div id="monthlyReportOut" class="hidden">
+          <div class="report-header">
+            <h2 id="reportTitle">Monthly Report</h2>
+            <p id="reportSubtitle"></p>
+          </div>
+          <div class="card">
+            <div class="table-wrap"><table>
+              <thead><tr><th>#</th><th>Employee</th><th>Branch</th><th>Days Present</th><th>Days Absent</th><th>Late Days</th><th>On Time</th><th>Total Hours</th><th>Avg Hours/Day</th></tr></thead>
+              <tbody id="monthlyTableBody"></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DAILY DETAILED -->
+      <div id="report-daily" class="hidden">
+        <div class="card">
+          <div class="card-header"><div class="card-title">📋 Daily Detailed Report — All Employees</div></div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="field">Date<input id="dailyReportDate" type="date"/></label>
+            <label class="field">Branch<select id="dailyBranch"><option value="">All Branches</option></select></label>
+            <button class="btn btn-primary" id="genDailyBtn">Generate</button>
+            <button class="btn btn-green" id="exportDailyBtn">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div id="dailyReportOut" class="hidden">
+          <div class="report-header">
+            <h2 id="dailyTitle">Daily Report</h2>
+            <p id="dailySubtitle"></p>
+          </div>
+          <div class="card">
+            <div class="table-wrap"><table>
+              <thead><tr><th>#</th><th>Employee</th><th>Branch</th><th>Check-In Time</th><th>Check-Out Time</th><th>Duration</th><th>Status</th><th>Photos</th></tr></thead>
+              <tbody id="dailyTableBody"></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PER EMPLOYEE -->
+      <div id="report-employee" class="hidden">
+        <div class="card">
+          <div class="card-header"><div class="card-title">👤 Full Attendance Log — Per Employee</div></div>
+          <div class="form-row" style="margin-bottom:0;">
+            <label class="field">Employee<select id="empReportSelect"><option value="">Select Employee</option></select></label>
+            <label class="field">From<input id="empFromDate" type="date"/></label>
+            <label class="field">To<input id="empToDate" type="date"/></label>
+            <button class="btn btn-primary" id="genEmpReportBtn">Generate</button>
+            <button class="btn btn-green" id="exportEmpBtn">⬇ Export CSV</button>
+          </div>
+        </div>
+        <div id="empReportOut" class="hidden">
+          <div class="report-header">
+            <h2 id="empReportTitle">Employee Report</h2>
+            <p id="empReportSubtitle"></p>
+          </div>
+          <!-- Summary cards -->
+          <div class="report-summary-card" id="empSummaryCards"></div>
+          <!-- Detailed table -->
+          <div class="card" style="margin-top:14px;">
+            <div class="table-wrap"><table>
+              <thead><tr><th>Date</th><th>Day</th><th>Check-In</th><th>Check-Out</th><th>Duration</th><th>Status</th><th>In Photo</th><th>Out Photo</th></tr></thead>
+              <tbody id="empDetailTableBody"></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="panel" id="panel-settings">
+      <div class="card" style="max-width:480px;">
+        <div class="card-title" style="margin-bottom:16px;">⚙️ Company Settings</div>
+        <div class="form-row" style="flex-direction:column;gap:14px;">
+          <label class="field">Shift Start Time<input id="shiftTime" type="time"/></label>
+          <label class="field">Late Grace Period (minutes)<input id="graceMins" type="number" min="0" max="60"/></label>
+          <label class="field">Change Admin PIN (leave blank to keep current)<input id="newAdminPin" type="password" placeholder="New PIN" maxlength="10"/></label>
+          <button class="btn btn-primary" id="saveSettingsBtn" style="width:200px;">Save Settings</button>
+          <div id="settingsStatus" style="font-size:13px;color:var(--accent2);"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="config.js"></script>
+<script>
+let branchesCache=[], employeesCache=[], lastMonthlyRows=[], lastDailyRows=[], lastEmpRows=[];
+
+const $=id=>document.getElementById(id);
+const today=new Date().toISOString().slice(0,10);
+
+// ===== THEME =====
+const root=document.documentElement;
+const storedTheme=localStorage.getItem("att_theme")||"dark";
+root.setAttribute("data-theme",storedTheme);
+const themeBtn=$("themeToggle");
+themeBtn.textContent=storedTheme==="dark"?"☀️":"🌙";
+themeBtn.onclick=()=>{
+  const cur=root.getAttribute("data-theme"), next=cur==="dark"?"light":"dark";
+  root.setAttribute("data-theme",next); localStorage.setItem("att_theme",next);
+  themeBtn.textContent=next==="dark"?"☀️":"🌙";
+};
+
+$("todayDateLabel").textContent=new Date().toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+
+// ===== LOGIN =====
+$("adminLoginBtn").onclick=async()=>{
+  const pin=$("adminPinInput").value.trim();
+  if(!pin){$("adminLoginErr").textContent="Enter PIN.";return;}
+  const{data,error}=await supabaseClient.from("settings").select("admin_pin").eq("id",1).single();
+  if(error||!data){$("adminLoginErr").textContent="Supabase error — check config.js keys.";return;}
+  if(data.admin_pin===pin){$("loginGate").classList.add("hidden");$("adminApp").classList.remove("hidden");initAdmin();}
+  else{$("adminLoginErr").textContent="❌ Incorrect PIN.";}
+};
+$("adminPinInput").onkeydown=e=>{if(e.key==="Enter")$("adminLoginBtn").click();};
+
+// ===== INIT =====
+function initAdmin(){
+  loadBranches(); loadEmployees(); loadToday(); loadDeviceRequests(); loadSettings();
+  $("reportMonth").value=today.slice(0,7);
+  $("dailyReportDate").value=today;
+  const d30=new Date(); d30.setDate(d30.getDate()-30);
+  $("empFromDate").value=d30.toISOString().slice(0,10);
+  $("empToDate").value=today;
+}
+
+// ===== NAV =====
+document.querySelectorAll(".navbtn").forEach(btn=>{
+  btn.onclick=()=>{
+    document.querySelectorAll(".navbtn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    $("panel-"+btn.dataset.panel).classList.add("active");
+    if(btn.dataset.panel==="dashboard") loadToday();
+    if(btn.dataset.panel==="devices") loadDeviceRequests();
+  };
+});
+
+// Report tabs
+document.querySelectorAll(".tab").forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
+    t.classList.add("active");
+    ["monthly","daily","employee"].forEach(id=>$("report-"+id).classList.add("hidden"));
+    $("report-"+t.dataset.tab).classList.remove("hidden");
+  };
+});
+
+// ===== HELPERS =====
+function fmt(iso){if(!iso)return"-";return new Date(iso).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit",hour12:true});}
+function fmtDate(d){return new Date(d).toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});}
+function duration(inT,outT){
+  if(!inT||!outT)return"-";
+  const ms=new Date(outT)-new Date(inT);
+  if(ms<0)return"-";
+  const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000);
+  return `<span class="duration-chip">${h}h ${m}m</span>`;
+}
+function pillStatus(s){
+  if(!s)return`<span class="pill red">Absent</span>`;
+  if(s==="late")return`<span class="pill yellow">⚠ Late</span>`;
+  return`<span class="pill green">✓ On Time</span>`;
+}
+function csvEscape(s){return`"${String(s||"").replace(/"/g,'""')}"`;}
+
+// ===== BRANCHES =====
+async function loadBranches(){
+  const{data}=await supabaseClient.from("branches").select("*").order("name");
+  branchesCache=data||[];
+  const{data:emps}=await supabaseClient.from("employees").select("branch_id");
+  const count={};(emps||[]).forEach(e=>{count[e.branch_id]=(count[e.branch_id]||0)+1;});
+  $("branchTableBody").innerHTML=branchesCache.map(b=>`
+    <tr>
+      <td><b>${b.name}</b></td>
+      <td>${b.latitude.toFixed(6)}</td><td>${b.longitude.toFixed(6)}</td>
+      <td>${b.radius_meters}m</td>
+      <td>${count[b.id]||0} employees</td>
+      <td><button class="btn btn-red btn-sm" onclick="deleteBranch('${b.id}')">Delete</button></td>
+    </tr>`).join("")||`<tr class="empty-row"><td colspan="6">No branches yet.</td></tr>`;
+  const brOpts=`<option value="">-- Select Branch --</option>`+branchesCache.map(b=>`<option value="${b.id}">${b.name}</option>`).join("");
+  $("empBranch").innerHTML=brOpts;
+  const allOpt=`<option value="">All Branches</option>`+branchesCache.map(b=>`<option value="${b.id}">${b.name}</option>`).join("");
+  $("reportBranch").innerHTML=$("dailyBranch").innerHTML=$("dashBranchFilter").innerHTML=$("empBranchFilter").innerHTML=allOpt;
+}
+$("useMyLocBtn").onclick=()=>{
+  navigator.geolocation.getCurrentPosition(pos=>{
+    $("branchLat").value=pos.coords.latitude.toFixed(6);
+    $("branchLng").value=pos.coords.longitude.toFixed(6);
+    alert("✅ Location captured! Please add the branch name and click Add Branch.");
+  },err=>alert("Error: "+err.message));
+};
+$("addBranchBtn").onclick=async()=>{
+  const name=$("branchName").value.trim(),lat=parseFloat($("branchLat").value),lng=parseFloat($("branchLng").value),radius=parseInt($("branchRadius").value)||150;
+  if(!name||isNaN(lat)||isNaN(lng)){alert("Fill all fields correctly.");return;}
+  const{error}=await supabaseClient.from("branches").insert({name,latitude:lat,longitude:lng,radius_meters:radius});
+  if(error){alert(error.message);return;}
+  $("branchName").value=$("branchLat").value=$("branchLng").value="";
+  loadBranches();
+};
+async function deleteBranch(id){
+  if(!confirm("Delete this branch? Employees assigned here will need reassignment."))return;
+  await supabaseClient.from("branches").delete().eq("id",id); loadBranches();
+}
+
+// ===== EMPLOYEES =====
+async function loadEmployees(){
+  const{data}=await supabaseClient.from("employees").select("*,branches(name)").order("name");
+  employeesCache=data||[];
+  renderEmployees();
+  const empOpts=`<option value="">Select Employee</option>`+employeesCache.map(e=>`<option value="${e.id}">${e.name}</option>`).join("");
+  $("empReportSelect").innerHTML=empOpts;
+}
+function renderEmployees(){
+  const search=$("empSearch").value.toLowerCase();
+  const brFilter=$("empBranchFilter").value;
+  let rows=employeesCache.filter(e=>(!search||e.name.toLowerCase().includes(search))&&(!brFilter||e.branch_id===brFilter));
+  $("empTableBody").innerHTML=rows.map((e,i)=>`
+    <tr>
+      <td class="muted">${i+1}</td>
+      <td><b>${e.name}</b></td><td>${e.pin}</td>
+      <td>${e.branches?.name||"<span class='muted'>Unassigned</span>"}</td>
+      <td><span class="pill ${e.status==="active"?"green":"red"}">${e.status}</span></td>
+      <td>${e.device_id?`<span class="pill blue">Bound</span>`:`<span class="pill yellow">Unbound</span>`}</td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" onclick="toggleEmpStatus('${e.id}','${e.status}')">${e.status==="active"?"Deactivate":"Activate"}</button>
+        <button class="btn btn-ghost btn-sm" onclick="resetDevice('${e.id}')">Reset Device</button>
+      </td>
+    </tr>`).join("")||`<tr class="empty-row"><td colspan="7">No employees found.</td></tr>`;
+}
+$("empSearch").oninput=renderEmployees;
+$("empBranchFilter").onchange=renderEmployees;
+$("addEmpBtn").onclick=async()=>{
+  const name=$("empName").value.trim(),pin=$("empPin").value.trim(),branch_id=$("empBranch").value;
+  if(!name||!pin||!branch_id){alert("Fill all fields.");return;}
+  const{error}=await supabaseClient.from("employees").insert({name,pin,branch_id});
+  if(error){alert(error.message);return;}
+  $("empName").value=$("empPin").value=""; loadEmployees();
+};
+async function toggleEmpStatus(id,status){
+  await supabaseClient.from("employees").update({status:status==="active"?"inactive":"active"}).eq("id",id); loadEmployees();
+}
+async function resetDevice(id){
+  if(!confirm("Reset device binding? Employee can log in fresh from any device."))return;
+  await supabaseClient.from("employees").update({device_id:null}).eq("id",id); loadEmployees();
+}
+
+// ===== DEVICE REQUESTS =====
+async function loadDeviceRequests(){
+  const{data}=await supabaseClient.from("device_change_requests").select("*,employees(name,branches(name))").eq("status","pending").order("requested_at",{ascending:false});
+  const rows=data||[];
+  const badge=$("pendingBadge");
+  if(rows.length>0){badge.textContent=rows.length;badge.classList.remove("hidden");}else{badge.classList.add("hidden");}
+  $("deviceTableBody").innerHTML=rows.map(r=>`
+    <tr>
+      <td><b>${r.employees?.name||"Unknown"}</b></td>
+      <td>${r.employees?.branches?.name||"-"}</td>
+      <td>${new Date(r.requested_at).toLocaleString("en-IN")}</td>
+      <td style="display:flex;gap:8px;">
+        <button class="btn btn-green btn-sm" onclick="resolveDevice('${r.id}','${r.employee_id}','${r.new_device_id}','approved')">✓ Approve</button>
+        <button class="btn btn-red btn-sm" onclick="resolveDevice('${r.id}','${r.employee_id}','${r.new_device_id}','rejected')">✕ Reject</button>
+      </td>
+    </tr>`).join("")||`<tr class="empty-row"><td colspan="4">No pending requests 🎉</td></tr>`;
+}
+async function resolveDevice(reqId,empId,newDeviceId,decision){
+  await supabaseClient.from("device_change_requests").update({status:decision,resolved_at:new Date().toISOString()}).eq("id",reqId);
+  if(decision==="approved") await supabaseClient.from("employees").update({device_id:newDeviceId}).eq("id",empId);
+  loadDeviceRequests(); loadEmployees();
+}
+
+// ===== TODAY DASHBOARD =====
+async function loadToday(){
+  const brFilter=$("dashBranchFilter").value;
+  let empQ=supabaseClient.from("employees").select("id,name,branch_id,branches(name)").eq("status","active");
+  if(brFilter) empQ=empQ.eq("branch_id",brFilter);
+  const{data:emps}=await empQ;
+  const{data:att}=await supabaseClient.from("attendance").select("*").eq("date",today);
+  const attMap={};(att||[]).forEach(a=>attMap[a.employee_id]=a);
+  let present=0,late=0,absent=0,totalDur=0,durCount=0;
+  const rows=(emps||[]).map((e,i)=>{
+    const a=attMap[e.id];
+    if(a?.check_in_time){present++;if(a.late_status==="late")late++;}else{absent++;}
+    if(a?.check_in_time&&a?.check_out_time){totalDur+=new Date(a.check_out_time)-new Date(a.check_in_time);durCount++;}
+    const dist=a?.check_in_lat?Math.round(distanceMeters(a.check_in_lat,a.check_in_lng,branchesCache.find(b=>b.id===e.branch_id)?.latitude||0,branchesCache.find(b=>b.id===e.branch_id)?.longitude||0)):null;
+    return{e,a,i,dist};
+  });
+  const avgH=durCount>0?Math.round(totalDur/durCount/60000):0;
+  $("todayStats").innerHTML=`
+    <div class="stat blue"><div class="icon">👥</div><div class="num">${emps?.length||0}</div><div class="lbl">Total</div></div>
+    <div class="stat green"><div class="icon">✅</div><div class="num">${present}</div><div class="lbl">Present</div></div>
+    <div class="stat yellow"><div class="icon">⚠️</div><div class="num">${late}</div><div class="lbl">Late</div></div>
+    <div class="stat red"><div class="icon">❌</div><div class="num">${absent}</div><div class="lbl">Absent</div></div>
+  `;
+  $("todayTableBody").innerHTML=rows.map(({e,a,i,dist})=>`
+    <tr>
+      <td class="muted">${i+1}</td>
+      <td><b>${e.name}</b></td>
+      <td>${e.branches?.name||"-"}</td>
+      <td>${a?.check_in_time?`<b>${fmt(a.check_in_time)}</b>`:"-"}</td>
+      <td>${a?.check_out_time?`<b>${fmt(a.check_out_time)}</b>`:"-"}</td>
+      <td>${duration(a?.check_in_time,a?.check_out_time)}</td>
+      <td>${pillStatus(a?.check_in_time?a.late_status:null)}</td>
+      <td>${dist!==null?`<span class="duration-chip">${dist}m</span>`:"-"}</td>
+      <td style="display:flex;gap:4px;">
+        ${a?.check_in_photo_url?`<img class="thumb" src="${a.check_in_photo_url}" onclick="window.open('${a.check_in_photo_url}')" title="Check-in">`:"-"}
+        ${a?.check_out_photo_url?`<img class="thumb" src="${a.check_out_photo_url}" onclick="window.open('${a.check_out_photo_url}')" title="Check-out">`:""}
+      </td>
+    </tr>`).join("")||`<tr class="empty-row"><td colspan="9">No employees found.</td></tr>`;
+  // Export today
+  $("exportTodayBtn").onclick=()=>{
+    let csv="Name,Branch,Check-In,Check-Out,Duration (mins),Status\n";
+    rows.forEach(({e,a})=>{
+      const dur=a?.check_in_time&&a?.check_out_time?Math.round((new Date(a.check_out_time)-new Date(a.check_in_time))/60000):"";
+      csv+=`${csvEscape(e.name)},${csvEscape(e.branches?.name||"")},${csvEscape(fmt(a?.check_in_time))},${csvEscape(fmt(a?.check_out_time))},${dur},${csvEscape(a?.check_in_time?a.late_status:"absent")}\n`;
+    });
+    dlCsv(csv,`attendance_today_${today}.csv`);
+  };
+}
+$("dashBranchFilter").onchange=loadToday;
+
+// ===== MONTHLY REPORT =====
+$("genReportBtn").onclick=async()=>{
+  const monthVal=$("reportMonth").value, brFilter=$("reportBranch").value;
+  if(!monthVal){alert("Pick a month.");return;}
+  const[year,month]=monthVal.split("-").map(Number);
+  const startDate=`${monthVal}-01`, endDate=new Date(year,month,0).toISOString().slice(0,10);
+  const workDays=countWorkDays(new Date(startDate),new Date(endDate));
+  let empQ=supabaseClient.from("employees").select("id,name,branch_id,branches(name)").eq("status","active");
+  if(brFilter) empQ=empQ.eq("branch_id",brFilter);
+  const{data:emps}=await empQ;
+  const{data:att}=await supabaseClient.from("attendance").select("*").gte("date",startDate).lte("date",endDate);
+  const rows=(emps||[]).map((e,i)=>{
+    const recs=(att||[]).filter(a=>a.employee_id===e.id);
+    const present=recs.filter(a=>a.check_in_time).length;
+    const late=recs.filter(a=>a.late_status==="late").length;
+    const onTime=present-late;
+    let ms=0; recs.forEach(a=>{if(a.check_in_time&&a.check_out_time) ms+=new Date(a.check_out_time)-new Date(a.check_in_time);});
+    const totalH=(ms/3600000).toFixed(1);
+    const avgH=present>0?(ms/present/3600000).toFixed(1):"-";
+    return{name:e.name,branch:e.branches?.name||"-",present,absent:workDays-present,late,onTime,totalH,avgH};
+  });
+  lastMonthlyRows=rows;
+  const mName=new Date(startDate).toLocaleDateString("en-IN",{month:"long",year:"numeric"});
+  $("reportTitle").textContent=`Monthly Report — ${mName}`;
+  $("reportSubtitle").textContent=`${emps?.length||0} employees · ${workDays} working days · ${brFilter?branchesCache.find(b=>b.id===brFilter)?.name:"All Branches"}`;
+  $("monthlyTableBody").innerHTML=rows.map((r,i)=>`
+    <tr>
+      <td class="muted">${i+1}</td>
+      <td><b>${r.name}</b></td><td>${r.branch}</td>
+      <td><b style="color:var(--accent2);">${r.present}</b></td>
+      <td><span style="color:var(--danger);">${r.absent}</span></td>
+      <td><span style="color:var(--warn);">${r.late}</span></td>
+      <td>${r.onTime}</td>
+      <td><b>${r.totalH}h</b></td>
+      <td>${r.avgH}h</td>
+    </tr>`).join("")||`<tr class="empty-row"><td colspan="9">No data for this period.</td></tr>`;
+  $("monthlyReportOut").classList.remove("hidden");
+};
+$("exportMonthlyBtn").onclick=()=>{
+  if(!lastMonthlyRows.length){alert("Generate report first.");return;}
+  let csv="Employee,Branch,Days Present,Days Absent,Late Days,On Time Days,Total Hours,Avg Hours/Day\n";
+  lastMonthlyRows.forEach(r=>csv+=`${csvEscape(r.name)},${csvEscape(r.branch)},${r.present},${r.absent},${r.late},${r.onTime},${r.totalH},${r.avgH}\n`);
+  dlCsv(csv,`monthly_report_${$("reportMonth").value}.csv`);
+};
+
+// ===== DAILY DETAILED REPORT =====
+$("genDailyBtn").onclick=async()=>{
+  const dateVal=$("dailyReportDate").value, brFilter=$("dailyBranch").value;
+  if(!dateVal){alert("Pick a date.");return;}
+  let empQ=supabaseClient.from("employees").select("id,name,branch_id,branches(name)").eq("status","active");
+  if(brFilter) empQ=empQ.eq("branch_id",brFilter);
+  const{data:emps}=await empQ;
+  const{data:att}=await supabaseClient.from("attendance").select("*").eq("date",dateVal);
+  const attMap={}; (att||[]).forEach(a=>attMap[a.employee_id]=a);
+  lastDailyRows=(emps||[]).map((e,i)=>({e,a:attMap[e.id]}));
+  $("dailyTitle").textContent=`Daily Report — ${fmtDate(dateVal+"T00:00:00")}`;
+  $("dailySubtitle").textContent=`${emps?.length||0} employees · ${brFilter?branchesCache.find(b=>b.id===brFilter)?.name:"All Branches"}`;
+  $("dailyTableBody").innerHTML=lastDailyRows.map(({e,a},i)=>`
+    <tr>
+      <td class="muted">${i+1}</td>
+      <td><b>${e.name}</b></td>
+      <td>${e.branches?.name||"-"}</td>
+      <td>${a?.check_in_time?`<b>${fmt(a.check_in_time)}</b>`:"-"}</td>
+      <td>${a?.check_out_time?`<b>${fmt(a.check_out_time)}</b>`:"-"}</td>
+      <td>${duration(a?.check_in_time,a?.check_out_time)}</td>
+      <td>${pillStatus(a?.check_in_time?a.late_status:null)}</td>
+      <td style="display:flex;gap:4px;">
+        ${a?.check_in_photo_url?`<img class="thumb" src="${a.check_in_photo_url}" onclick="window.open('${a.check_in_photo_url}')" title="In">`:"-"}
+        ${a?.check_out_photo_url?`<img class="thumb" src="${a.check_out_photo_url}" onclick="window.open('${a.check_out_photo_url}')" title="Out">`:""}
+      </td>
+    </tr>`).join("")||`<tr class="empty-row"><td colspan="8">No data.</td></tr>`;
+  $("dailyReportOut").classList.remove("hidden");
+};
+$("exportDailyBtn").onclick=()=>{
+  if(!lastDailyRows.length){alert("Generate report first.");return;}
+  let csv="Employee,Branch,Check-In,Check-Out,Duration (mins),Status\n";
+  lastDailyRows.forEach(({e,a})=>{
+    const dur=a?.check_in_time&&a?.check_out_time?Math.round((new Date(a.check_out_time)-new Date(a.check_in_time))/60000):"";
+    csv+=`${csvEscape(e.name)},${csvEscape(e.branches?.name||"")},${csvEscape(fmt(a?.check_in_time))},${csvEscape(fmt(a?.check_out_time))},${dur},${csvEscape(a?.check_in_time?a.late_status:"absent")}\n`;
+  });
+  dlCsv(csv,`daily_report_${$("dailyReportDate").value}.csv`);
+};
+
+// ===== PER EMPLOYEE REPORT =====
+$("genEmpReportBtn").onclick=async()=>{
+  const empId=$("empReportSelect").value, from=$("empFromDate").value, to=$("empToDate").value;
+  if(!empId||!from||!to){alert("Select employee and date range.");return;}
+  const emp=employeesCache.find(e=>e.id===empId);
+  const{data:att}=await supabaseClient.from("attendance").select("*").eq("employee_id",empId).gte("date",from).lte("date",to).order("date");
+  const days=getDayRange(from,to);
+  const attMap={}; (att||[]).forEach(a=>attMap[a.date]=a);
+  lastEmpRows=days.map(d=>({date:d,a:attMap[d]}));
+  const present=att?.filter(a=>a.check_in_time).length||0;
+  const late=att?.filter(a=>a.late_status==="late").length||0;
+  let totalMs=0;
+  att?.forEach(a=>{if(a.check_in_time&&a.check_out_time) totalMs+=new Date(a.check_out_time)-new Date(a.check_in_time);});
+  const totalH=(totalMs/3600000).toFixed(1);
+  $("empReportTitle").textContent=`Attendance Log — ${emp?.name}`;
+  $("empReportSubtitle").textContent=`${from} to ${to} · ${emp?.branches?.name||"No Branch"}`;
+  $("empSummaryCards").innerHTML=`
+    <div class="rscard"><div class="n" style="color:var(--accent2);">${present}</div><div class="l">Days Present</div></div>
+    <div class="rscard"><div class="n" style="color:var(--danger);">${days.length-present}</div><div class="l">Days Absent</div></div>
+    <div class="rscard"><div class="n" style="color:var(--warn);">${late}</div><div class="l">Late Days</div></div>
+    <div class="rscard"><div class="n" style="color:var(--accent);">${totalH}h</div><div class="l">Total Hours</div></div>
+  `;
+  $("empDetailTableBody").innerHTML=lastEmpRows.map(({date,a})=>{
+    const dayName=new Date(date+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short"});
+    const isSun=dayName==="Sun";
+    return`<tr style="${isSun?"opacity:.5":""}">
+      <td><b>${new Date(date+"T00:00:00").toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}</b></td>
+      <td class="muted">${dayName}</td>
+      <td>${a?.check_in_time?`<b>${fmt(a.check_in_time)}</b>`:"-"}</td>
+      <td>${a?.check_out_time?`<b>${fmt(a.check_out_time)}</b>`:"-"}</td>
+      <td>${duration(a?.check_in_time,a?.check_out_time)}</td>
+      <td>${isSun&&!a?.check_in_time?`<span class="pill blue">Sunday</span>`:pillStatus(a?.check_in_time?a.late_status:null)}</td>
+      <td>${a?.check_in_photo_url?`<img class="thumb" src="${a.check_in_photo_url}" onclick="window.open('${a.check_in_photo_url}')">`:"-"}</td>
+      <td>${a?.check_out_photo_url?`<img class="thumb" src="${a.check_out_photo_url}" onclick="window.open('${a.check_out_photo_url}')">`:"-"}</td>
+    </tr>`;
+  }).join("")||`<tr class="empty-row"><td colspan="8">No records.</td></tr>`;
+  $("empReportOut").classList.remove("hidden");
+};
+$("exportEmpBtn").onclick=()=>{
+  if(!lastEmpRows.length){alert("Generate report first.");return;}
+  const empId=$("empReportSelect").value, emp=employeesCache.find(e=>e.id===empId);
+  let csv=`Employee:,${emp?.name||""}\nBranch:,${emp?.branches?.name||""}\n\nDate,Day,Check-In,Check-Out,Duration (mins),Status\n`;
+  lastEmpRows.forEach(({date,a})=>{
+    const day=new Date(date+"T00:00:00").toLocaleDateString("en-IN",{weekday:"short"});
+    const dur=a?.check_in_time&&a?.check_out_time?Math.round((new Date(a.check_out_time)-new Date(a.check_in_time))/60000):"";
+    csv+=`${date},${day},${csvEscape(fmt(a?.check_in_time))},${csvEscape(fmt(a?.check_out_time))},${dur},${csvEscape(a?.check_in_time?a.late_status:"absent")}\n`;
+  });
+  dlCsv(csv,`employee_report_${$("empReportSelect").options[$("empReportSelect").selectedIndex].text.replace(/\s+/g,"_")}.csv`);
+};
+
+// ===== SETTINGS =====
+async function loadSettings(){
+  const{data}=await supabaseClient.from("settings").select("*").eq("id",1).single();
+  if(data){$("shiftTime").value=data.shift_start_time?.slice(0,5)||"09:30"; $("graceMins").value=data.late_grace_minutes||15;}
+}
+$("saveSettingsBtn").onclick=async()=>{
+  const update={shift_start_time:$("shiftTime").value,late_grace_minutes:parseInt($("graceMins").value)||15};
+  const newPin=$("newAdminPin").value.trim();
+  if(newPin) update.admin_pin=newPin;
+  const{error}=await supabaseClient.from("settings").update(update).eq("id",1);
+  $("settingsStatus").textContent=error?"❌ "+error.message:"✅ Settings saved!";
+  if(!error) $("newAdminPin").value="";
+};
+
+// ===== UTILITY =====
+function countWorkDays(start,end){
+  let count=0,d=new Date(start);
+  while(d<=end){if(d.getDay()!==0)count++;d.setDate(d.getDate()+1);}
+  return count;
+}
+function getDayRange(from,to){
+  const days=[]; let d=new Date(from+"T00:00:00");
+  const end=new Date(to+"T00:00:00");
+  while(d<=end){days.push(d.toISOString().slice(0,10));d.setDate(d.getDate()+1);}
+  return days;
+}
+function dlCsv(csv,filename){
+  const blob=new Blob([csv],{type:"text/csv"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click();
+}
+</script>
+</body>
+</html>
